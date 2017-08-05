@@ -1,4 +1,5 @@
-https://gitlab.lif.univ-mrs.fr/benoit.favre/darknet-rest-server/tree/8a6ba2fff3ee1c14bca0aa0e0a909aba7057cc94/src
-
+In order to implement xnornet under darknet framework, the source codes provided by following links need to be refered.
+They provide the xnor_layer.h/xnor_layer.cpp, binary_convolution.h/binary_convolution.cpp.
 
 https://github.com/cvjena/darknet/tree/master/src
+https://gitlab.lif.univ-mrs.fr/benoit.favre/darknet-rest-server/tree/8a6ba2fff3ee1c14bca0aa0e0a909aba7057cc94/src
