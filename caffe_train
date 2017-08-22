@@ -1,0 +1,28 @@
+1. convert caffe trained model into our client version (*.caffemodel --> *.dat)
+
+run makedata.sh 
+------------------------------------------------------------------------------------
+~/caffe/build/tools/caffe2conic deploy_age.prototxt age_net.caffemodel class.csv
+
+ethanlee@Rain:~/caffe3$ ./build/tools/caffe2conic ./coniclib_convert/convnet_128_train_test_BIGGER_our0_2dropout_newest.prototxt ./coniclib_convert/new/20170105_2dropout_iter_400000.caffemodel ./coniclib_convert/lables.csv 
+
+: the caffe2conic function accept three arguments [the setup file - *.prototxt / the trained model - *.caffemodel / the labels - *.csv]
+---------------------------------------------------------------------------------
+then the *.dat file will be generated.
+
+2. convert image files into lmdb format for caffe training (.jpg, .bmp --> *.lmdb)
+run convert_2_lmDB.sh
+--------------------------------------------------------------------------------------
+#~/caffe-master/build/tools/convert_imageset -backend="lmdb" -gray=1 -shuffle=1 ./ ./vallist.txt val_lmdb
+
+~/caffe-master/build/tools/convert_imageset -backend="lmdb" -gray=1 -shuffle=1 ./ ./trainlist.txt train_lmdb_bin
+
+~/caffe-master/build/tools/compute_image_mean ./train_lmdb_bin ./train_lmdb_bin/mean.binaryproto
+
+
+~/caffe-master/build/tools/convert_imageset -backend="lmdb" -gray=1 ./ ./testlist.txt test_lmdb_bin
+
+~/caffe-master/build/tools/compute_image_mean ./test_lmdb_bin ./test_lmdb_bin/mean.binaryproto
+
+:
+--------------------------------------------------------------------------------------
