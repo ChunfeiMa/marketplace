@@ -1,0 +1,506 @@
+void loadimg(string path,char* buffer)  
+{  
+    cv::Mat img = cv::imread(path, CV_LOAD_IMAGE_COLOR);  
+    string val;  
+    int rows = img.rows;  
+    int cols = img.cols;  
+    int pos=0;  
+    for (int c = 0; c < 3; c++)  
+    {  
+        for (int row = 0; row < rows; row++)  
+        {  
+            for (int col = 0; col < cols; col++)  
+            {  
+                buffer[pos++]=img.at<cv::Vec3b>(row,col)[c];  
+            }  
+        }  
+    }  
+  
+}
+
+####caffe神经网络框架的辅助工具（将图片转换为leveldb格式）####### 
+
+#include <google/protobuf/text_format.h>
+#include <glog/logging.h>
+#include <leveldb/db.h>
+
+#include <stdint.h>
+#include <fstream>  // NOLINT(readability/streams)
+#include <string>
+#include <set>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include "caffe/proto/caffe.pb.h"
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/highgui/highgui_c.h>
+#include <opencv2/imgproc/imgproc.hpp>
+
+using std::string;
+using namespace std;
+
+
+set<string> all_class_name;
+map<string,int> class2id;
+
+
+/**
+ * path:目录
+ * files：用于保存文件名的vector
+ * r：是否需要遍历子目录
+ * return:文件名，不包含路径
+ */
+void list_dir(const char *path,vector<string>& files,bool r = false)
+{
+	DIR *pDir;
+	struct dirent *ent;
+	char childpath[512];
+	pDir = opendir(path);
+	memset(childpath, 0, sizeof(childpath));
+	while ((ent = readdir(pDir)) != NULL)
+	{
+		if (ent->d_type & DT_DIR)
+		{
+
+			if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+			{
+				continue;
+			}
+			if(r) //如果需要遍历子目录
+			{
+				sprintf(childpath, "%s/%s", path, ent->d_name);
+				list_dir(childpath,files);
+			}
+		}
+		else
+		{
+			files.push_back(ent->d_name);
+		}
+	}
+	sort(files.begin(),files.end());//排序
+
+}
+
+string get_classname(string path)
+{
+	int index = path.find_last_of('_');
+	return path.substr(0, index);
+}
+
+
+int get_labelid(string fileName)
+{
+	string class_name_tmp = get_classname(fileName);
+	all_class_name.insert(class_name_tmp);
+	map<string,int>::iterator name_iter_tmp = class2id.find(class_name_tmp);
+	if (name_iter_tmp == class2id.end())
+	{
+		int id = class2id.size();
+		class2id.insert(name_iter_tmp, std::make_pair(class_name_tmp, id));
+		return id;
+	}
+	else
+	{
+		return name_iter_tmp->second;
+	}
+}
+
+void loadimg(string path,char* buffer)
+{
+	cv::Mat img = cv::imread(path, CV_LOAD_IMAGE_COLOR);
+	string val;
+	int rows = img.rows;
+	int cols = img.cols;
+	int pos=0;
+	for (int c = 0; c < 3; c++)
+	{
+		for (int row = 0; row < rows; row++)
+		{
+			for (int col = 0; col < cols; col++)
+			{
+				buffer[pos++]=img.at<cv::Vec3b>(row,col)[c];
+			}
+		}
+	}
+
+}
+void convert(string imgdir,string outputdb,string attachdir,int channel,int width,int height)
+{
+	leveldb::DB* db;
+	leveldb::Options options;
+	options.create_if_missing = true;
+	options.error_if_exists = true;
+	caffe::Datum datum;
+	datum.set_channels(channel);
+	datum.set_height(height);
+	datum.set_width(width);
+	int image_size = channel*width*height;
+	char buffer[image_size];
+
+	string value;
+	CHECK(leveldb::DB::Open(options, outputdb, &db).ok());
+	vector<string> filenames;
+	list_dir(imgdir.c_str(),filenames);
+	string img_log = attachdir+"image_filename";
+	ofstream writefile(img_log.c_str());
+	for(int i=0;i<filenames.size();i++)
+	{
+		string path= imgdir;
+		path.append(filenames[i]);//算出绝对路径
+
+		loadimg(path,buffer);
+
+		int labelid = get_labelid(filenames[i]);
+
+		datum.add_label(labelid);
+		datum.set_data(buffer,image_size);
+		datum.SerializeToString(&value);
+		snprintf(buffer, image_size, "%05d", i);
+		printf("\nclassid:%d classname:%s abspath:%s",labelid,get_classname(filenames[i]).c_str(),path.c_str());
+		db->Put(leveldb::WriteOptions(),string(buffer),value);
+		//printf("%d %s\n",i,fileNames[i].c_str());
+
+		assert(writefile.is_open());
+		writefile<<i<<" "<<filenames[i]<<"\n";
+
+	}
+	delete db;
+	writefile.close();
+
+	img_log = attachdir+"image_classname";
+	writefile.open(img_log.c_str());
+	set<string>::iterator iter = all_class_name.begin();
+	while(iter != all_class_name.end())
+	{
+		assert(writefile.is_open());
+		writefile<<(*iter)<<"\n";
+		//printf("%s\n",(*iter).c_str());
+		iter++;
+	}
+	writefile.close();
+
+}
+
+int main(int argc, char** argv)
+{
+	if (argc < 6)
+	{
+	    LOG(ERROR) << "convert_imagedata src_dir dst_dir attach_dir channel width height";
+	    return 0;
+	}
+//./convert_imagedata.bin  /home/linger/imdata/collarTest/ /home/linger/linger/testfile/dbtest/  /home/linger/linger/testfile/test_attachment/ 3 250 250
+	//   ./convert_imagedata.bin /home/linger/imdata/collar_train/ /home/linger/linger/testfile/crop_train_db/ /home/linger/linger/testfile/crop_train_attachment/ 3 50 50
+	google::InitGoogleLogging(argv[0]);
+	string src_dir = argv[1];
+	string src_dst = argv[2];
+	string attach_dir = argv[3];
+	int channel = atoi(argv[4]);
+	int width = atoi(argv[5]);
+	int height = atoi(argv[6]);
+
+	//for test
+	/*
+	src_dir = "/home/linger/imdata/collarTest/";
+	src_dst = "/home/linger/linger/testfile/dbtest/";
+	attach_dir = "/home/linger/linger/testfile/";
+	channel = 3;
+	width = 250;
+	height = 250;
+	 */
+
+	convert(src_dir,src_dst,attach_dir,channel,width,height);
+
+
+
+}
+
+####caffe源码修改：抽取任意一张图片的特征########
+
+#include <stdio.h>  // for snprintf
+#include <string>
+#include <vector>
+#include <iostream>
+#include <fstream>
+
+#include "boost/algorithm/string.hpp"
+#include "google/protobuf/text_format.h"
+#include "leveldb/db.h"
+#include "leveldb/write_batch.h"
+
+#include "caffe/blob.hpp"
+#include "caffe/common.hpp"
+#include "caffe/net.hpp"
+#include "caffe/proto/caffe.pb.h"
+#include "caffe/util/io.hpp"
+#include "caffe/vision_layers.hpp"
+
+using namespace caffe;  // NOLINT(build/namespaces)
+
+template<typename Dtype>
+int feature_extraction_pipeline(int argc, char** argv);
+
+int main(int argc, char** argv) {
+  return feature_extraction_pipeline<float>(argc, argv);
+//  return feature_extraction_pipeline<double>(argc, argv);
+}
+
+template<typename Dtype>
+class writeDb
+{
+public:
+	void open(string dbName)
+	{
+		db.open(dbName.c_str());
+	}
+	void write(const Dtype &data)
+	{
+		db<<data;
+	}
+	void write(const string &str)
+	{
+		db<<str;
+	}
+	virtual ~writeDb()
+	{
+		db.close();
+	}
+private:
+	std::ofstream db;
+};
+
+template<typename Dtype>
+int feature_extraction_pipeline(int argc, char** argv) {
+  ::google::InitGoogleLogging(argv[0]);
+  const int num_required_args = 6;
+  if (argc < num_required_args) {
+    LOG(ERROR)<<
+    "This program takes in a trained network and an input data layer, and then"
+    " extract features of the input data produced by the net.\n"
+    "Usage: extract_features  pretrained_net_param"
+    "  feature_extraction_proto_file  extract_feature_blob_name1[,name2,...]"
+    "  save_feature_leveldb_name1[,name2,...]  img_path  [CPU/GPU]"
+    "  [DEVICE_ID=0]\n"
+    "Note: you can extract multiple features in one pass by specifying"
+    " multiple feature blob names and leveldb names seperated by ','."
+    " The names cannot contain white space characters and the number of blobs"
+    " and leveldbs must be equal.";
+    return 1;
+  }
+  int arg_pos = num_required_args;
+
+  arg_pos = num_required_args;
+  if (argc > arg_pos && strcmp(argv[arg_pos], "GPU") == 0) {
+    LOG(ERROR)<< "Using GPU";
+    uint device_id = 0;
+    if (argc > arg_pos + 1) {
+      device_id = atoi(argv[arg_pos + 1]);
+      CHECK_GE(device_id, 0);
+    }
+    LOG(ERROR) << "Using Device_id=" << device_id;
+    Caffe::SetDevice(device_id);
+    Caffe::set_mode(Caffe::GPU);
+  } else {
+    LOG(ERROR) << "Using CPU";
+    Caffe::set_mode(Caffe::CPU);
+  }
+  Caffe::set_phase(Caffe::TEST);
+
+  arg_pos = 0;  // the name of the executable
+  string pretrained_binary_proto(argv[++arg_pos]);//网络模型参数文件
+
+  string feature_extraction_proto(argv[++arg_pos]);
+
+  shared_ptr<Net<Dtype> > feature_extraction_net(
+      new Net<Dtype>(feature_extraction_proto));
+
+  feature_extraction_net->CopyTrainedLayersFrom(pretrained_binary_proto);//将网络参数load进内存
+
+
+  string extract_feature_blob_names(argv[++arg_pos]);
+  vector<string> blob_names;//要抽取特征的layer的名字，可以是多个
+  boost::split(blob_names, extract_feature_blob_names, boost::is_any_of(","));
+
+  string save_feature_leveldb_names(argv[++arg_pos]);
+  vector<string> leveldb_names;// 这里我改写成一个levedb为一个文件，数据格式不使用真正的levedb，而是自定义
+  boost::split(leveldb_names, save_feature_leveldb_names,
+               boost::is_any_of(","));
+  CHECK_EQ(blob_names.size(), leveldb_names.size()) <<
+      " the number of blob names and leveldb names must be equal";
+  size_t num_features = blob_names.size();
+
+  for (size_t i = 0; i < num_features; i++) {
+    CHECK(feature_extraction_net->has_blob(blob_names[i]))  //检测blob的名字在网络中是否存在
+        << "Unknown feature blob name " << blob_names[i]
+        << " in the network " << feature_extraction_proto;
+  }
+
+
+  vector<shared_ptr<writeDb<Dtype> > > feature_dbs;
+  for (size_t i = 0; i < num_features; ++i) //打开db，准备写入数据
+  {
+    LOG(INFO)<< "Opening db " << leveldb_names[i];
+    writeDb<Dtype>* db = new writeDb<Dtype>();
+    db->open(leveldb_names[i]);
+    feature_dbs.push_back(shared_ptr<writeDb<Dtype> >(db));
+  }
+
+
+
+  LOG(ERROR)<< "Extacting Features";
+
+  const shared_ptr<Layer<Dtype> > layer = feature_extraction_net->layer_by_name("data");//获取第一层
+  MyImageDataLayer<Dtype>* my_layer = (MyImageDataLayer<Dtype>*)layer.get();
+  my_layer->setImgPath(argv[++arg_pos],1);//"/media/G/imageset/clothing/针织衫/针织衫_1.jpg"
+  //设置图片路径
+
+  vector<Blob<float>*> input_vec;
+  vector<int> image_indices(num_features, 0);
+  int num_mini_batches = 1;//atoi(argv[++arg_pos]);//共多少次迭代。  每次迭代的数量在prototxt用batchsize指定
+  for (int batch_index = 0; batch_index < num_mini_batches; ++batch_index) //共num_mini_batches次迭代
+  {
+    feature_extraction_net->Forward(input_vec);//一次正向传播
+    for (int i = 0; i < num_features; ++i) //多层特征
+    {
+      const shared_ptr<Blob<Dtype> > feature_blob = feature_extraction_net
+          ->blob_by_name(blob_names[i]);
+      int batch_size = feature_blob->num();
+      int dim_features = feature_blob->count() / batch_size;
+
+      Dtype* feature_blob_data;
+
+      for (int n = 0; n < batch_size; ++n)
+      {
+        feature_blob_data = feature_blob->mutable_cpu_data() +
+            feature_blob->offset(n);
+        feature_dbs[i]->write("3 ");
+        for (int d = 0; d < dim_features; ++d)
+        {
+          feature_dbs[i]->write((Dtype)(d+1));
+          feature_dbs[i]->write(":");
+          feature_dbs[i]->write(feature_blob_data[d]);
+          feature_dbs[i]->write(" ");
+        }
+        feature_dbs[i]->write("\n");
+
+      }  // for (int n = 0; n < batch_size; ++n)
+    }  // for (int i = 0; i < num_features; ++i)
+  }  // for (int batch_index = 0; batch_index < num_mini_batches; ++batch_index)
+
+
+  LOG(ERROR)<< "Successfully extracted the features!";
+  return 0;
+}
+
+###################python######################################
+#import matplotlib.pyplot as plt
+
+caffe_root = '../../'
+import sys
+sys.path.insert(0, caffe_root + 'python')
+
+import caffe
+
+MODEL_FILE = caffe_root+'examples/captcha_number/deploy.prototxt'
+PRETRAINED = caffe_root+'examples/captcha_number/bak/capnumNet_iter_1000.caffemodel'
+caffe.set_mode_gpu()
+net = caffe.Classifier(MODEL_FILE, PRETRAINED, raw_scale=255, image_dims=(50, 250))
+import os
+imgs = os.listdir('/search/proj/caffe/data/validCode/captcha_number/val/')
+dir_prefix = '/search/proj/caffe/data/validCode/captcha_number/val/'
+ldic = {'16':0, '15':1, '17':2, '23':3, '18':4, '28':5, '19':6}
+cnt = 0
+err_cnt = 0
+for img in imgs:
+cls = img.split('-')[0]
+IMAGE_FILE = dir_prefix+img
+input_image = caffe.io.load_image(IMAGE_FILE)
+prediction = net.predict([input_image])
+p = prediction[0].argmax()
+if p != ldic[cls]:
+err_cnt = e_cnt + 1
+if cls == '16':
+print img,'class:', p
+cnt = cnt + 1
+print float(err_cnt)/cnt
+#########################################################
+###################python######################################
+import os
+import inspect
+dirname = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+print dirname
+#########################################################
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
+
+###################python######################################
+
+#########################################################
