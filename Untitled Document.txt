@@ -1,0 +1,40 @@
+GPU driver(GTX 1080)
+sudo apt-get install nvidia-457
+
+Dependencies ~~~
+Ubuntu Installation
+
+sudo apt-get install libprotobuf-dev libleveldb-dev libsnappy-dev libopencv-dev libhdf5-serial-dev protobuf-compiler
+sudo apt-get install --no-install-recommends libboost-all-dev
+
+sudo apt-get install libgflags-dev libgoogle-glog-dev liblmdb-dev
+
+
+
+http://www.pyimagesearch.com/2016/07/04/how-to-install-cuda-toolkit-and-cudnn-for-deep-learning/
+
+CUDA
+  :8.0
+Cudnn
+   :cudnn-8.0-linux-x64-v5.1.tgz
+Opencv
+Caffe
+	cp Makefile.config.example Makefile.config
+	make all
+	make test
+	make runtest
+
+Installation: opencv 2.4.10(ubuntu 14.04)
+
+http://opencv.org/downloads.html
+
+http://matrivian.github.io/computer%20vision/linux/opencv/2015/04/15/install-opencv2-4-10-on-ubuntu-14-04-lts.html
+
+1.
+cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -D CUDA_GENERATION=Kepler ..
+
+2.
+http://answers.opencv.org/question/95148/cudalegacy-not-compile-nppigraphcut-missing/
+
+#if !defined (HAVE_CUDA) || defined (CUDA_DISABLER)  || (CUDART_VERSION >= 8000)
+

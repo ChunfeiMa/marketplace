@@ -1,0 +1,3 @@
+https://github.com/tiangolo/caffe/blob/ubuntu-tutorial-b/docs/install_apt2.md 
+
+http://collab.lge.com/main/pages/editpage.action?pageId=568544349
