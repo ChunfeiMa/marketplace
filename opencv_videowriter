@@ -1,0 +1,109 @@
+#include <stdio.h>
+#include <opencv/cv.h>
+#include <opencv/cxcore.h>
+#include <opencv/highgui.h>
+
+#define CAMERA_MODE 1
+#define TEST_PATH_VIDEO_DIRPATH				"..\\..\\..\\Test_Video"
+#define TEST_PATH_VIDEO_FILENAME			"20160103_153207.avi"
+
+using namespace std;
+using namespace cv;
+
+void writeImage(cv::Mat& imageV,int frameNum, vector<int> compression_params,bool& flagRecod);
+void writeVideo(cv::Mat& imageV,cv::VideoWriter& videoWriter,int i_width,int i_height,bool& flagRecod);
+
+int main(int argc, char *argv[])
+{
+	int key,frameNum = 0;
+	Mat	 frame;	
+	//Video
+	VideoWriter videoWriter;
+	bool flagRecod = false;
+	//Image
+	vector<int> compression_params; //vector that stores the compression parameters of the image
+	compression_params.push_back(CV_IMWRITE_JPEG_QUALITY); //specify the compression technique
+	compression_params.push_back(100); //specify the compression quality
+
+#if CAMERA_MODE
+	VideoCapture videoCapturer(0);
+#else
+	char strTestVideoPath[512] = "";
+	sprintf(strTestVideoPath, "%s\\%s", TEST_PATH_VIDEO_DIRPATH, TEST_PATH_VIDEO_FILENAME);
+	VideoCapture videoCapturer(strTestVideoPath);
+#endif
+
+
+	while (1)
+	{
+		videoCapturer >> frame; 
+		
+		if(frame.empty())
+		{
+			cout << "Image retrieve failed!" << endl;
+			continue;
+		}
+			
+		imshow("frame", frame);
+
+		//writeVideo(frame,videoWriter,frame.cols,frame.rows,flagRecodVideo);
+		writeImage(frame,frameNum,compression_params,flagRecod);
+
+		key = cvWaitKey(1);
+		if(key == 27)
+			break;
+		else if(key == 's')
+		{
+			waitKey(0);
+			cout << "Stop!" << endl;
+		}
+		else if (key == 'r')
+		{
+			frameNum++;
+			flagRecod = true;
+			cout << "Capturer is recording!" << endl;
+		}
+		else if (key == 't')
+		{
+			flagRecod = false;
+			cout << "Capture is terminated!" << endl;
+		}
+
+	}
+}
+/************************************************************************/
+/*	Comment	:	Record the result video (openCV is needed)*/
+/*	Author	:	chunfei Ma(chunfei.ma@lge.com)           */
+/*	Date	:	[2016.07.18]                                     */
+/************************************************************************/
+void writeVideo(cv::Mat& imageV,cv::VideoWriter& videoWriter,int i_width,int i_height,bool& flagRecod)
+{
+	char Time[255];
+	char videoFileName[512];
+
+	if(flagRecod)
+	{
+		time_t  now = time(0);
+		struct  tm  tstruct;
+		tstruct = *localtime(&now);
+		sprintf(Time, "%04d_%02d_%02d_%02d:%02d",  tstruct.tm_year, tstruct.tm_mon+1, tstruct.tm_mday, tstruct.tm_hour, tstruct.tm_min);
+		sprintf(videoFileName, "Clips_%04d_%02d_%02d_%02dh%02dm.avi",  tstruct.tm_year, tstruct.tm_mon+1, tstruct.tm_mday, tstruct.tm_hour, tstruct.tm_min);
+		videoWriter.open(videoFileName,CV_FOURCC('M','J','P','G'),10, cv::Size(i_width,i_height),true);
+		videoWriter.write(imageV);
+	}	
+}
+void writeImage(cv::Mat& imageV,int frameNum,vector<int> compression_params,bool& flagRecod)
+{	
+	if(flagRecod)
+	{
+		char Time[255];
+		char imageFileName[512];
+		time_t  now = time(0);
+		struct  tm  tstruct;
+		tstruct = *localtime(&now);
+		sprintf(Time, "%04d_%02d_%02d_%02d_%02d_%04d",  tstruct.tm_year, tstruct.tm_mon+1, tstruct.tm_mday, tstruct.tm_hour, tstruct.tm_min, tstruct.tm_sec);
+		sprintf(imageFileName, "Result\\frame_%d_%04d_%02d_%02d_%02dh%02dm%04ds.jpg", frameNum, tstruct.tm_year, tstruct.tm_mon+1, tstruct.tm_mday, tstruct.tm_hour, tstruct.tm_min,tstruct.tm_sec);
+
+		imwrite(imageFileName,imageV,compression_params);
+	}
+}
